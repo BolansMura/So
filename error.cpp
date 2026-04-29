@@ -1,6 +1,6 @@
-#includ <iostream>  // Ошибка: пропущена буква 'd'
+#include <iostream>
 
 int main() {
-    cout << "Hello"  // Ошибка: нет std:: и точки с запятой
-    return 0
+    std::cout << "Hello" << std::endl;
+    return 0;
 }
