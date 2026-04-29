@@ -5,6 +5,7 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   build-and-test:
@@ -16,37 +17,80 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y make g++ qttools5-dev-tools lcov gcovr
+        sudo apt-get install -y g++ lcov gcovr
     
-    - name: Build with coverage flags
+    - name: Create test program
       run: |
-        qmake -o Makefile "QMAKE_CXXFLAGS += --coverage" "QMAKE_LFLAGS += --coverage"
-        make
-    
-    - name: Run tests (if any)
-      run: |
-        # Если у вас есть тесты, запустите их здесь
-        # Пример для тестового исполняемого файла:
-        # ./your_test_executable
+        cat > math.cpp << 'EOF'
+        int add(int a, int b) {
+            return a + b;
+        }
         
-        # Если тестов нет, создадим простой тест
-        ./So || true
-        echo "✅ Tests completed"
+        int multiply(int a, int b) {
+            return a * b;
+        }
+        EOF
+        
+        cat > main.cpp << 'EOF'
+        #include <iostream>
+        int add(int, int);
+        int multiply(int, int);
+        
+        int main() {
+            std::cout << "Add: " << add(5, 3) << std::endl;
+            std::cout << "Multiply: " << multiply(5, 3) << std::endl;
+            return 0;
+        }
+        EOF
+        
+        cat > test_main.cpp << 'EOF'
+        #include <cassert>
+        int add(int, int);
+        int multiply(int, int);
+        
+        int main() {
+            assert(add(2, 2) == 4);
+            assert(add(-1, 1) == 0);
+            assert(multiply(3, 4) == 12);
+            assert(multiply(0, 5) == 0);
+            return 0;
+        }
+        EOF
     
-    - name: Generate coverage report
+    - name: Compile main program
       run: |
-        # Собираем информацию о покрытии
+        g++ -fprofile-arcs -ftest-coverage -o main main.cpp math.cpp
+    
+    - name: Compile tests
+      run: |
+        g++ -fprofile-arcs -ftest-coverage -o test test_main.cpp math.cpp
+    
+    - name: Run main program
+      run: |
+        ./main
+    
+    - name: Run tests
+      run: |
+        ./test
+    
+    - name: List coverage files
+      run: |
+        ls -la *.gcda *.gcno || echo "No coverage files yet"
+    
+    - name: Generate coverage info
+      run: |
         lcov --capture --directory . --output-file coverage.info --ignore-errors mismatch
-        lcov --remove coverage.info '/usr/*' --output-file coverage.info
-        lcov --list coverage.info
     
-    - name: Convert to Coveralls format
+    - name: Filter coverage
       run: |
-        gcovr --gcov-executable gcov --root . --xml -o coverage.xml
+        lcov --remove coverage.info 'test_main.cpp' '*/usr/*' --output-file coverage.filtered.info
     
-    - name: Upload coverage to Coveralls
+    - name: Show coverage summary
+      run: |
+        lcov --list coverage.filtered.info
+    
+    - name: Upload to Coveralls
       uses: coverallsapp/github-action@v2
       with:
-        file: coverage.xml
-        # Для приватного репозитория раскомментируйте:
-        # github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        file: coverage.filtered.info
